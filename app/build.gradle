@@ -1,0 +1,26 @@
+plugins {
+    id 'com.android.application'
+    id 'com.chaquo.python'
+}
+
+android {
+    namespace 'com.amer.tiktokmonitor'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.amer.tiktokmonitor'
+        minSdk 24
+        targetSdk 28
+        versionCode 1
+        versionName '1.0'
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = '3.11'
+        pip {
+            install 'TikTokLive==7.0.1'
+        }
+    }
+}
