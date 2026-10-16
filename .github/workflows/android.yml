@@ -34,9 +34,13 @@ jobs:
       - name: Validate Python source
         run: |
           python -m py_compile dashboard.py
-          test -f app/src/main/python/dashboard.py
+          python -m py_compile app/src/main/python/dashboard.py
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/amer/tiktokmonitor/MainActivity.java
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
