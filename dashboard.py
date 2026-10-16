@@ -33,7 +33,13 @@ MAX_COMMENTS = 60
 MAX_GIFTS = 40
 MAX_JOINS = 40
 MAX_VIEWER_NAMES = 120
-ARCHIVE_ROOT = FilePath("/storage/emulated/0/TikTokMonitor/LIVE_History")
+APP_DATA_ROOT = FilePath(
+    "/data/data/com.amer.tiktokmonitor/files/TikTokMonitor"
+    if __import__("os").environ.get("ANDROID_ARGUMENT")
+    else "/storage/emulated/0/TikTokMonitor"
+)
+APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
+ARCHIVE_ROOT = APP_DATA_ROOT / "LIVE_History"
 
 streams = OrderedDict()
 clients = {}
@@ -1264,7 +1270,7 @@ def create_client(username):
     return client
 
 
-ACCOUNTS_FILE = FilePath("/storage/emulated/0/TikTokMonitor/monitored_accounts.json")
+ACCOUNTS_FILE = APP_DATA_ROOT / "monitored_accounts.json"
 
 
 def load_monitored_accounts():
