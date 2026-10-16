@@ -1,27 +1,48 @@
-
 name: Build TikTok Monitor APK
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'app/**'
+      - '*.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/android.yml'
+      - 'dashboard.py'
+      - 'requirements.txt'
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Get source code
+      - name: Checkout source
         uses: actions/checkout@v4
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-
-      - name: Check project files
+      - name: Set up Python for source validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate Python source
         run: |
-          echo "Checking uploaded source files"
-          test -f dashboard.py
-          test -f requirements.txt
-          python3 -m py_compile dashboard.py
-          echo "Source files passed the basic check"
-
+          python -m py_compile dashboard.py
+          test -f app/src/main/python/dashboard.py
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikTokMonitor-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
