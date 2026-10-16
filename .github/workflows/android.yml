@@ -27,3 +27,4 @@ jobs:
           test -f requirements.txt
           python3 -m py_compile dashboard.py
           echo "Source files passed the basic check"
+
