@@ -35,7 +35,7 @@ MAX_JOINS = 40
 MAX_VIEWER_NAMES = 120
 APP_DATA_ROOT = FilePath(
     "/data/data/com.amer.tiktokmonitor/files/TikTokMonitor"
-    if __import__("os").environ.get("ANDROID_ARGUMENT")
+    if FilePath("/data/data/com.amer.tiktokmonitor").exists()
     else "/storage/emulated/0/TikTokMonitor"
 )
 APP_DATA_ROOT.mkdir(parents=True, exist_ok=True)
