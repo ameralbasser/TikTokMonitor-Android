@@ -1,0 +1,1 @@
+Temporary permission test for the TikTokMonitor-Android repository. This file can be deleted after verification.
