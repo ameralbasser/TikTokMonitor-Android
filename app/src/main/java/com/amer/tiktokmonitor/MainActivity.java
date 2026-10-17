@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
         StringBuilder clean = new StringBuilder();
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            clean.append((c < 32 || c == '/' || c == '\\\\' || c == ':' ||
+            clean.append((c < 32 || c == '/' || c == '\\' || c == ':' ||
                 c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
                 ? '_' : c);
         }
