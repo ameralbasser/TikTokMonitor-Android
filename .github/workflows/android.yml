@@ -54,14 +54,14 @@ jobs:
           echo "FFmpeg archive entries:"
           unzip -l /tmp/ffmpeg-android.zip | head -n 100
           unzip -q /tmp/ffmpeg-android.zip -d /tmp/ffmpeg-android
-          FFMPEG_PATH="$(find /tmp/ffmpeg-android -type f \( -name ffmpeg -o -name 'ffmpeg-*' \) -size +1M | head -n 1)"
+          FFMPEG_PATH="$(find /tmp/ffmpeg-android \( -type f -o -type l \) \( -name ffmpeg -o -name 'ffmpeg-*' \) -size +1M | head -n 1)"
           if [ -z "$FFMPEG_PATH" ]; then
             echo "No named FFmpeg executable found; listing large ELF files:"
             find /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \;
             exit 1
           fi
           cp "$FFMPEG_PATH" app/src/main/assets/ffmpeg/ffmpeg
-          find /tmp/ffmpeg-android -type f -name '*.so' -exec cp '{}' app/src/main/assets/ffmpeg/ \;
+          find /tmp/ffmpeg-android \( -type f -o -type l \) -name 'lib*.so*' -exec cp -L '{}' app/src/main/assets/ffmpeg/ \;
           test -s app/src/main/assets/ffmpeg/ffmpeg
           echo "Bundled FFmpeg:"
           file app/src/main/assets/ffmpeg/ffmpeg
