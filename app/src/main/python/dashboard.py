@@ -1846,12 +1846,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({"error": "Archive file not found"}, 404)
                     return
 
-                raw = target.read_bytes()
+                with target.open("rb") as source:
+                    header_bytes = source.read(4096)
                 self.send_response(200)
-                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                content_type = "video/mp4" if target.suffix.lower() == ".mp4" else "text/plain; charset=utf-8"
+                self.send_header("Content-Type", content_type)
                 owner_name = ""
                 try:
-                    header_text = raw[:4096].decode("utf-8", errors="ignore")
+                    header_text = header_bytes.decode("utf-8", errors="ignore")
                     for header_line in header_text.splitlines():
                         if header_line.startswith("Account Name:"):
                             owner_name = header_line.split(":", 1)[1].strip()
@@ -1881,9 +1883,16 @@ class Handler(BaseHTTPRequestHandler):
                     f'attachment; filename="{target.name}"; filename*=UTF-8\'\'{encoded_name}'
                 )
                 self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Length", str(target.stat().st_size))
                 self.end_headers()
-                self.wfile.write(raw)
+                with target.open("rb") as source:
+                    while True:
+                        chunk = source.read(1024 * 256)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             except Exception as e:
                 print(f"⚠️ Archive download error: {e}")
                 self.send_json({"error": "تعذر تحميل ملف الأرشيف"}, 500)
