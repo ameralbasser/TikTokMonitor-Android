@@ -538,6 +538,23 @@ def finish_archive_session(stream):
 
 
 
+def _write_video_diagnostic(stream, message):
+    """Persist recorder diagnostics inside the session archive for Android support."""
+    from datetime import datetime
+    username = safe_text(stream.get("username"), "?")
+    line = f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] @{username}: {message}"
+    print("🎥 " + line)
+    session_dir = stream.get("session_dir")
+    if session_dir:
+        try:
+            path = FilePath(session_dir) / "video_diagnostics.txt"
+            with path.open("a", encoding="utf-8") as log:
+                log.write(line + "\\n")
+                log.flush()
+        except Exception as log_error:
+            print(f"⚠️ Could not save video diagnostics: {log_error}")
+
+
 def start_video_recording(stream, client):
     """Start one MP4 recording for the currently active archive session."""
     try:
@@ -607,7 +624,10 @@ def start_video_recording(stream, client):
         from datetime import datetime
         from pathlib import Path
 
-        quality_log = Path("LIVE_History/quality_diagnostics.log")
+        # Use the app's writable archive directory. A relative path here
+        # resolves to the process working directory on Android (often "/"),
+        # which can raise PermissionError and abort recording before FFmpeg starts.
+        quality_log = ARCHIVE_ROOT / "quality_diagnostics.log"
         quality_log.parent.mkdir(parents=True, exist_ok=True)
 
         diagnostic_lines = [
@@ -628,6 +648,11 @@ def start_video_recording(stream, client):
         with quality_log.open("a", encoding="utf-8") as log:
             log.write("\n".join(diagnostic_lines) + "\n")
 
+        _write_video_diagnostic(
+            stream,
+            f"FFmpeg={shutil.which('ffmpeg') or 'NOT FOUND'}; "
+            f"selected_quality={selected_quality.value}; output={video_path}"
+        )
         print(
             f"🎥 Selected video quality for @{stream['username']}: "
             f"{selected_quality.value}"
@@ -645,12 +670,15 @@ def start_video_recording(stream, client):
         stream["video_file"] = str(video_path)
         stream["video_recording"] = True
 
+        _write_video_diagnostic(stream, f"recording start requested; file={video_path}")
         print(f"🎥 Video recording STARTED: {video_path}")
         return True
 
     except Exception as e:
         stream["video_file"] = None
         stream["video_recording"] = False
+        error_message = f"START FAILED: {type(e).__name__}: {e}"
+        _write_video_diagnostic(stream, error_message)
         print(
             f"⚠️ Video recording start failed for "
             f"@{stream['username']}: {type(e).__name__}: {e}"
@@ -790,6 +818,7 @@ def stop_video_recording(stream, client=None):
             pass
 
     if not path.is_file() or path.stat().st_size == 0:
+        _write_video_diagnostic(stream, f"STOP FAILED: video file missing or empty: {path}")
         print(f"Video file missing or empty: {path}")
         return False
 
@@ -811,6 +840,7 @@ def stop_video_recording(stream, client=None):
         return False
 
     stream["video_recording"] = False
+    _write_video_diagnostic(stream, f"recording finalized and validated; bytes={path.stat().st_size}; file={path}")
     print(f"Video validation passed ({path.stat().st_size} bytes): {path}")
     return True
 
