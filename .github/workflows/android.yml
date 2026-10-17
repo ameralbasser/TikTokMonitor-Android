@@ -35,6 +35,8 @@ jobs:
         run: |
           python -m py_compile dashboard.py
           python -m py_compile app/src/main/python/dashboard.py
+          python -m pip install 'TikTokLive==6.6.5'
+          python -c "from TikTokLive import TikTokLiveClient; from TikTokLive.events import ConnectEvent, CommentEvent, GiftEvent, LikeEvent, FollowEvent, ShareEvent, JoinEvent, RoomUserSeqEvent, LiveEndEvent, LinkMicBattleEvent; from TikTokLive.client.web.routes.fetch_video_data import VideoFetchQuality, VideoFetchFormat; print('TikTokLive import smoke test passed')"
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/amer/tiktokmonitor/MainActivity.java
       - name: Set up Gradle
