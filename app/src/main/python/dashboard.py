@@ -27,8 +27,8 @@ from TikTokLive.events import (
     LinkMicBattleEvent,
 )
 
-HOST = "0.0.0.0"
-PORT = 8080
+HOST = "127.0.0.1"
+PORT = 8765
 MAX_COMMENTS = 60
 MAX_GIFTS = 40
 MAX_JOINS = 40
