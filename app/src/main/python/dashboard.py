@@ -34,8 +34,8 @@ class _TikTokProtoCompatLoader(importlib.abc.Loader):
             self._wrapped.exec_module(module)
             return
         source = re.sub(
-            r"typing\\.Annotated\\[([^,\\[\\]]+),\\s*pydantic\\.Field\\([^)]*\\)\\]",
-            r"\\1",
+            r"typing\.Annotated\[([^,\[\]]+),\s*pydantic\.Field\([^)]*\)\]",
+            r"\1",
             source,
         )
         filename = self._wrapped.get_filename(module.__name__)
