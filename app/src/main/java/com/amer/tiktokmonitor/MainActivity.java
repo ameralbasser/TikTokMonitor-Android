@@ -197,12 +197,47 @@ public class MainActivity extends Activity {
         }
     }
 
+
+    private void prepareFfmpegRuntime() throws IOException {
+        File targetDir = new File(getFilesDir(), "ffmpeg");
+        File marker = new File(targetDir, ".runtime-build-264");
+        File binary = new File(targetDir, "ffmpeg");
+        if (marker.isFile() && binary.isFile() && binary.length() > 100000 && binary.canExecute()) {
+            return;
+        }
+        if (!targetDir.exists() && !targetDir.mkdirs()) {
+            throw new IOException("تعذر إنشاء مجلد FFmpeg");
+        }
+        String[] names = getAssets().list("ffmpeg");
+        if (names == null || names.length == 0) {
+            throw new IOException("محرك FFmpeg غير مضمّن داخل APK");
+        }
+        for (String name : names) {
+            if (name.contains("/") || name.contains("\\\\")) continue;
+            File outFile = new File(targetDir, name);
+            try (InputStream in = getAssets().open("ffmpeg/" + name);
+                 OutputStream out = new FileOutputStream(outFile)) {
+                byte[] buffer = new byte[32768];
+                int count;
+                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                out.flush();
+            }
+        }
+        if (!binary.isFile() || binary.length() < 100000 || !binary.setExecutable(true, true)) {
+            throw new IOException("تعذر تجهيز ملف FFmpeg التنفيذي");
+        }
+        try (OutputStream out = new FileOutputStream(marker)) {
+            out.write("build-264".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        }
+    }
+
     private void startPythonServer() {
         new Thread(() -> {
             try {
                 if (!Python.isStarted()) {
                     Python.start(new AndroidPlatform(getApplicationContext()));
                 }
+                prepareFfmpegRuntime();
                 Python.getInstance().getModule("dashboard");
             } catch (PyException e) {
                 startupError = "خطأ Python: " + e.getMessage();
