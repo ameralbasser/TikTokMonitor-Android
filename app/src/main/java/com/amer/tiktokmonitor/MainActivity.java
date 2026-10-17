@@ -28,6 +28,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 public class MainActivity extends Activity {
     private static final String DASHBOARD_URL = "http://127.0.0.1:8765";
@@ -200,7 +202,7 @@ public class MainActivity extends Activity {
 
     private void prepareFfmpegRuntime() throws IOException {
         File targetDir = new File(getFilesDir(), "ffmpeg");
-        File marker = new File(targetDir, ".runtime-build-264");
+        File marker = new File(targetDir, ".runtime-build-265");
         File binary = new File(targetDir, "ffmpeg");
         if (marker.isFile() && binary.isFile() && binary.length() > 100000 && binary.canExecute()) {
             return;
@@ -208,26 +210,38 @@ public class MainActivity extends Activity {
         if (!targetDir.exists() && !targetDir.mkdirs()) {
             throw new IOException("تعذر إنشاء مجلد FFmpeg");
         }
-        String[] names = getAssets().list("ffmpeg");
-        if (names == null || names.length == 0) {
-            throw new IOException("محرك FFmpeg غير مضمّن داخل APK");
+        File[] oldFiles = targetDir.listFiles();
+        if (oldFiles != null) {
+            for (File old : oldFiles) {
+                if (old.isFile() && !old.delete()) {
+                    throw new IOException("تعذر تحديث ملفات FFmpeg القديمة");
+                }
+            }
         }
-        for (String name : names) {
-            if (name.contains("/") || name.contains("\\\\")) continue;
-            File outFile = new File(targetDir, name);
-            try (InputStream in = getAssets().open("ffmpeg/" + name);
-                 OutputStream out = new FileOutputStream(outFile)) {
-                byte[] buffer = new byte[32768];
-                int count;
-                while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
-                out.flush();
+        try (InputStream asset = getAssets().open("ffmpeg-runtime.zip");
+             ZipInputStream zip = new ZipInputStream(asset)) {
+            ZipEntry entry;
+            byte[] buffer = new byte[32768];
+            while ((entry = zip.getNextEntry()) != null) {
+                String name = entry.getName();
+                if (entry.isDirectory() || name.contains("/") || name.contains("\\\\")) {
+                    zip.closeEntry();
+                    continue;
+                }
+                File outFile = new File(targetDir, name);
+                try (OutputStream out = new FileOutputStream(outFile)) {
+                    int count;
+                    while ((count = zip.read(buffer)) != -1) out.write(buffer, 0, count);
+                    out.flush();
+                }
+                zip.closeEntry();
             }
         }
         if (!binary.isFile() || binary.length() < 100000 || !binary.setExecutable(true, true)) {
             throw new IOException("تعذر تجهيز ملف FFmpeg التنفيذي");
         }
         try (OutputStream out = new FileOutputStream(marker)) {
-            out.write("build-264".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.write("build-265".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
     }
 
