@@ -43,29 +43,29 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Bundle Android FFmpeg runtime
+      - name: Bundle compressed Android FFmpeg runtime
         run: |
           set -euo pipefail
-          mkdir -p app/src/main/assets/ffmpeg
+          mkdir -p /tmp/ffmpeg-android /tmp/ffmpeg-runtime app/src/main/assets
           curl -fL --retry 3 --retry-delay 2 \
             'https://github.com/rhythmcache/ffmpeg-android/releases/download/build-264/termux-ffmpeg-8.0-git--ee2eb6c-arm64-v8a.deb' \
             -o /tmp/ffmpeg-android.deb
-          mkdir -p /tmp/ffmpeg-android
           dpkg-deb -x /tmp/ffmpeg-android.deb /tmp/ffmpeg-android
-          echo "Extracted FFmpeg package files:"
-          find /tmp/ffmpeg-android -type f | grep -E '/(ffmpeg|lib[^/]+\\.so(\\.[0-9.]+)?)$' | head -n 100 || true
           FFMPEG_PATH="$(find /tmp/ffmpeg-android -type f -name ffmpeg | head -n 1)"
           if [ -z "$FFMPEG_PATH" ]; then
             echo "FFmpeg executable missing from downloaded Android package"
             find /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \\;
             exit 1
           fi
-          cp "$FFMPEG_PATH" app/src/main/assets/ffmpeg/ffmpeg
-          find -L /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp -L '{}' app/src/main/assets/ffmpeg/ \;
-          test -s app/src/main/assets/ffmpeg/ffmpeg
-          echo "Bundled FFmpeg:"
-          file app/src/main/assets/ffmpeg/ffmpeg
-          ls -lh app/src/main/assets/ffmpeg/
+          cp "$FFMPEG_PATH" /tmp/ffmpeg-runtime/ffmpeg
+          find -L /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp -L '{}' /tmp/ffmpeg-runtime/ \;
+          cd /tmp/ffmpeg-runtime
+          zip -q -9 "$GITHUB_WORKSPACE/app/src/main/assets/ffmpeg-runtime.zip" ffmpeg lib*.so*
+          cd "$GITHUB_WORKSPACE"
+          test -s app/src/main/assets/ffmpeg-runtime.zip
+          echo "Compressed FFmpeg runtime:"
+          ls -lh app/src/main/assets/ffmpeg-runtime.zip
+          unzip -l app/src/main/assets/ffmpeg-runtime.zip | tail -n 5
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload APK
