@@ -10,6 +10,7 @@ Arabic RTL dashboard for monitoring TikTok LIVE accounts from an Android phone.
 - Architectures included: ARM64, ARMv7, x86_64
 - Runtime: embedded Python 3.11 + TikTokLive 7.0.1
 - The dashboard and account list run locally on the phone; live event data requires an internet connection.
+- The APK uses its own loopback-only dashboard port (127.0.0.1:8765), separate from the Termux server (typically port 8080), so it cannot silently display the Termux dashboard.
 
 ## Install the APK
 
