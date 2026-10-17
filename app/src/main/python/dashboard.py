@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import shutil
 import threading
 import time
@@ -8,6 +9,22 @@ from pathlib import Path as FilePath
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
+
+# The standalone Android APK installs its bundled FFmpeg executable and shared
+# libraries here before importing this module. Termux keeps using its own PATH.
+_ANDROID_FFMPEG_DIR = "/data/data/com.amer.tiktokmonitor/files/ffmpeg"
+if FilePath(_ANDROID_FFMPEG_DIR).is_dir():
+    os.environ["PATH"] = _ANDROID_FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
+    os.environ["LD_LIBRARY_PATH"] = _ANDROID_FFMPEG_DIR + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
+    _ffmpeg_probe = shutil.which("ffmpeg")
+    print(f"🎥 FFmpeg runtime: {_ffmpeg_probe or 'NOT FOUND'}")
+    if _ffmpeg_probe:
+        try:
+            import subprocess as _ffmpeg_subprocess
+            _probe = _ffmpeg_subprocess.run([_ffmpeg_probe, "-version"], capture_output=True, text=True, timeout=8)
+            print(f"🎥 FFmpeg startup check: exit={_probe.returncode}; {(_probe.stdout or _probe.stderr)[:180].strip()}")
+        except Exception as _probe_error:
+            print(f"⚠️ FFmpeg startup check failed: {type(_probe_error).__name__}: {_probe_error}")
 
 from TikTokLive import TikTokLiveClient
 from TikTokLive.client.web.routes.fetch_video_data import (
