@@ -323,14 +323,23 @@ async function loadArchives(){
           comments:"💬 التعليقات",
           gifts:"🎁 الهدايا",
           follows:"➕ المتابعات",
-          joins:"📥 الدخول"
+          joins:"📥 الدخول",
+          video:"🎥 تنزيل الفيديو"
         };
+        if(f.type==="video"){
+          const videoName=(a.account_name||a.username)+"_live.mp4";
+          return '<button type="button" class="archive-file" data-download-path="/api/archive-file?path='+escapeHtml(encodeURIComponent(f.path))+'" data-download-name="'+escapeHtml(videoName)+'">'+labels.video+'</button>';
+        }
         const downloadName=(a.account_name||a.username)+"_"+(f.type||"file")+".txt";
         return '<button type="button" class="archive-file" data-download-path="/api/archive-file?path='+escapeHtml(encodeURIComponent(f.path))+'" data-download-name="'+escapeHtml(downloadName)+'">'+escapeHtml(labels[f.type]||f.type)+'</button>';
       }).join("");
       const zipButton='<button type="button" class="archive-file" data-download-path="/api/archive-zip?folder='+escapeHtml(encodeURIComponent(a.folder))+'" data-download-name="'+escapeHtml(a.folder+'.zip')+'" style="background:#18352c;border-color:#28664f">📦 تحميل الجلسة كاملة ZIP</button>';
       const deleteButton='<button type="button" class="archive-file" data-delete-folder="'+escapeHtml(a.folder)+'" style="background:#3a1820;border-color:#71303d;color:#ff9caf">🗑️ حذف الأرشيف</button>';
-      return '<div class="archive-card"><div class="archive-card-head"><div><div class="archive-name">📁 @'+escapeHtml(a.username)+'</div><div class="archive-date">'+escapeHtml(a.folder)+'</div></div></div><div class="archive-files">'+zipButton+deleteButton+(files||'<span class="muted">لا توجد ملفات</span>')+'</div></div>';
+      const videoFile=(a.files||[]).find(f=>f.type==="video");
+      const videoPlayer=videoFile
+        ? '<div style="padding:0 11px 12px"><video controls playsinline preload="metadata" style="width:100%;max-height:360px;background:#000;border-radius:10px" src="/api/archive-video?path='+escapeHtml(encodeURIComponent(videoFile.path))+'"></video></div>'
+        : '';
+      return '<div class="archive-card"><div class="archive-card-head"><div><div class="archive-name">📁 @'+escapeHtml(a.username)+'</div><div class="archive-date">'+escapeHtml(a.folder)+'</div></div></div><div class="archive-files">'+zipButton+deleteButton+(files||'<span class="muted">لا توجد ملفات</span>')+'</div>'+videoPlayer+'</div>';
     }).join("");
   }catch(e){
     box.innerHTML='<div class="archive-empty">تعذر الاتصال بالخادم</div>';
@@ -1589,12 +1598,14 @@ class Handler(BaseHTTPRequestHandler):
                             ("gifts.txt", "gifts"),
                             ("follows.txt", "follows"),
                             ("joins.txt", "joins"),
+                            ("live.mp4", "video"),
                         ):
                             fp = folder / filename
-                            if fp.is_file():
+                            if fp.is_file() and fp.stat().st_size > 0:
                                 files.append({
                                     "type": file_type,
                                     "path": str(fp.relative_to(ARCHIVE_ROOT)),
+                                    "size": fp.stat().st_size,
                                 })
 
                         username = folder.name.split("_", 1)[0]
@@ -1745,6 +1756,69 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 print(f"⚠️ Archive ZIP error: {e}")
                 self.send_json({"error": "تعذر تجهيز ملف ZIP"}, 500)
+            return
+
+        if parsed.path == "/api/archive-video":
+            params = {}
+            for part in urlparse(self.path).query.split("&"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    params[k] = unquote(v)
+            relative_path = params.get("path", "").strip()
+            if not relative_path:
+                self.send_json({"error": "Archive video required"}, 400)
+                return
+            try:
+                root = ARCHIVE_ROOT.resolve()
+                target = (ARCHIVE_ROOT / relative_path).resolve()
+                if target == root or root not in target.parents:
+                    self.send_json({"error": "Invalid archive path"}, 403)
+                    return
+                if not target.is_file() or target.suffix.lower() != ".mp4":
+                    self.send_json({"error": "Archive video not found"}, 404)
+                    return
+                size = target.stat().st_size
+                range_header = self.headers.get("Range", "")
+                start, end = 0, max(0, size - 1)
+                partial = False
+                if range_header.startswith("bytes="):
+                    try:
+                        first, last = range_header[6:].split(",", 1)[0].split("-", 1)
+                        if first:
+                            start = int(first)
+                        if last:
+                            end = int(last)
+                        if start < 0 or start >= size or end < start:
+                            raise ValueError("invalid byte range")
+                        end = min(end, size - 1)
+                        partial = True
+                    except Exception:
+                        self.send_response(416)
+                        self.send_header("Content-Range", f"bytes */{size}")
+                        self.end_headers()
+                        return
+                length = end - start + 1
+                self.send_response(206 if partial else 200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(length))
+                self.send_header("Cache-Control", "no-store")
+                if partial:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.end_headers()
+                with target.open("rb") as video:
+                    video.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk = video.read(min(1024 * 256, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as e:
+                print(f"⚠️ Archive video playback error: {e}")
             return
 
         if parsed.path == "/api/archive-file":
