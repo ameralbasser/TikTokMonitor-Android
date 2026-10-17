@@ -54,10 +54,10 @@ jobs:
           echo "FFmpeg archive entries:"
           unzip -l /tmp/ffmpeg-android.zip | head -n 100
           unzip -q /tmp/ffmpeg-android.zip -d /tmp/ffmpeg-android
-          FFMPEG_PATH="$(find -L /tmp/ffmpeg-android -type f \( -name ffmpeg -o -name 'ffmpeg-*' \) -size +1M | head -n 1)"
+          FFMPEG_PATH="$(find -L /tmp/ffmpeg-android -type f -size +1M -exec sh -c 'file "$1" | grep -q "ELF 64-bit.*executable.*ARM aarch64" && printf "%s\\n" "$1"' _ '{}' \; | head -n 1)"
           if [ -z "$FFMPEG_PATH" ]; then
-            echo "No named FFmpeg executable found; listing large ELF files:"
-            find /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \;
+            echo "No ARM64 FFmpeg executable found; listing large ELF files:"
+            find -L /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \;
             exit 1
           fi
           cp "$FFMPEG_PATH" app/src/main/assets/ffmpeg/ffmpeg
