@@ -309,10 +309,10 @@ async function loadArchives(){
           joins:"📥 الدخول"
         };
         const downloadName=(a.account_name||a.username)+"_"+(f.type||"file")+".txt";
-        return '<a class="archive-file" href="/api/archive-file?path='+encodeURIComponent(f.path)+'" download="'+escapeHtml(downloadName)+'">'+escapeHtml(labels[f.type]||f.type)+'</a>';
+        return '<button type="button" class="archive-file" data-download-path="/api/archive-file?path='+escapeHtml(encodeURIComponent(f.path))+'" data-download-name="'+escapeHtml(downloadName)+'">'+escapeHtml(labels[f.type]||f.type)+'</button>';
       }).join("");
-      const zipButton='<a class="archive-file" href="/api/archive-zip?folder='+encodeURIComponent(a.folder)+'" style="background:#18352c;border-color:#28664f">📦 تحميل الجلسة كاملة ZIP</a>';
-      const deleteButton='<button class="archive-file" style="background:#3a1820;border-color:#71303d;color:#ff9caf" onclick="deleteArchive('+JSON.stringify(a.folder).replace(/"/g,'&quot;')+')">🗑️ حذف الأرشيف</button>';
+      const zipButton='<button type="button" class="archive-file" data-download-path="/api/archive-zip?folder='+escapeHtml(encodeURIComponent(a.folder))+'" data-download-name="'+escapeHtml(a.folder+'.zip')+'" style="background:#18352c;border-color:#28664f">📦 تحميل الجلسة كاملة ZIP</button>';
+      const deleteButton='<button type="button" class="archive-file" data-delete-folder="'+escapeHtml(a.folder)+'" style="background:#3a1820;border-color:#71303d;color:#ff9caf">🗑️ حذف الأرشيف</button>';
       return '<div class="archive-card"><div class="archive-card-head"><div><div class="archive-name">📁 @'+escapeHtml(a.username)+'</div><div class="archive-date">'+escapeHtml(a.folder)+'</div></div></div><div class="archive-files">'+zipButton+deleteButton+(files||'<span class="muted">لا توجد ملفات</span>')+'</div></div>';
     }).join("");
   }catch(e){
@@ -320,6 +320,27 @@ async function loadArchives(){
   }
 }
 
+function downloadArchive(path,name){
+  if(!path || !path.startsWith('/api/archive-')){alert('مسار التنزيل غير صالح');return;}
+  if(window.Android && typeof window.Android.download === 'function'){
+    window.Android.download(path,name||'TikTokArchive');
+  }else{
+    window.location.href=path;
+  }
+}
+document.addEventListener('click',function(event){
+  const downloadButton=event.target.closest('[data-download-path]');
+  if(downloadButton){
+    event.preventDefault();
+    downloadArchive(downloadButton.dataset.downloadPath,downloadButton.dataset.downloadName);
+    return;
+  }
+  const deleteButton=event.target.closest('[data-delete-folder]');
+  if(deleteButton){
+    event.preventDefault();
+    deleteArchive(deleteButton.dataset.deleteFolder);
+  }
+});
 async function loadStreams(){try{const r=await fetch('/api/streams',{cache:'no-store'});const d=await r.json();if(r.ok)renderStreams(d);}catch(e){}}
 document.getElementById('username').addEventListener('keydown',e=>{if(e.key==='Enter')addUser();});
 loadStreams();loadArchives();setInterval(loadStreams,1000);setInterval(loadArchives,5000);
