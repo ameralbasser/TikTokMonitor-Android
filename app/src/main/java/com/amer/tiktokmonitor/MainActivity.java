@@ -1,19 +1,33 @@
 package com.amer.tiktokmonitor;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ContentValues;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.graphics.Color;
 import android.view.View;
 import android.webkit.WebChromeClient;
+import android.webkit.JsResult;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.chaquo.python.PyException;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.IOException;
 
 public class MainActivity extends Activity {
     private static final String DASHBOARD_URL = "http://127.0.0.1:8765";
@@ -32,7 +46,43 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.rgb(11, 13, 18));
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(MainActivity.this)
+                    .setMessage(message)
+                    .setPositiveButton("موافق", (dialog, which) -> result.confirm())
+                    .setOnCancelListener(dialog -> result.cancel())
+                    .show();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                new AlertDialog.Builder(MainActivity.this)
+                    .setMessage(message)
+                    .setPositiveButton("موافق", (dialog, which) -> result.confirm())
+                    .setNegativeButton("إلغاء", (dialog, which) -> result.cancel())
+                    .setOnCancelListener(dialog -> result.cancel())
+                    .show();
+                return true;
+            }
+        });
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void download(String path, String filename) {
+                if (path == null || !(path.startsWith("/api/archive-zip?folder=")
+                        || path.startsWith("/api/archive-file?path="))) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                        "مسار التنزيل غير صالح", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+                String safeName = sanitizeFilename(filename);
+                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                    "جارٍ تجهيز التنزيل: " + safeName, Toast.LENGTH_SHORT).show());
+                new Thread(() -> performArchiveDownload(path, safeName), "TikTokMonitor-Download").start();
+            }
+        }, "Android");
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
@@ -52,6 +102,99 @@ public class MainActivity extends Activity {
         setContentView(root);
         webView.setVisibility(View.INVISIBLE);
         startPythonServer();
+    }
+
+    private String sanitizeFilename(String name) {
+        String value = name == null ? "TikTokArchive" : name.trim();
+        StringBuilder clean = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            clean.append((c < 32 || c == '/' || c == '\\\\' || c == ':' ||
+                c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+                ? '_' : c);
+        }
+        String result = clean.toString().trim();
+        if (result.isEmpty()) result = "TikTokArchive";
+        if (result.length() > 140) result = result.substring(0, 140);
+        return result;
+    }
+
+    private void performArchiveDownload(String path, String filename) {
+        HttpURLConnection connection = null;
+        Uri savedUri = null;
+        File fallbackFile = null;
+        try {
+            connection = (HttpURLConnection) new URL(DASHBOARD_URL + path).openConnection();
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(120000);
+            connection.setRequestMethod("GET");
+            connection.setUseCaches(false);
+            int statusCode = connection.getResponseCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                String detail = "HTTP " + statusCode;
+                try (InputStream err = connection.getErrorStream()) {
+                    if (err != null) {
+                        byte[] bytes = new byte[1024];
+                        int count = err.read(bytes);
+                        if (count > 0) detail = new String(bytes, 0, count, java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                } catch (Exception ignored) {}
+                throw new IOException(detail);
+            }
+
+            String mime = path.startsWith("/api/archive-zip?")
+                ? "application/zip" : "text/plain";
+            OutputStream output;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/TikTokMonitor");
+                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                savedUri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (savedUri == null) throw new IOException("تعذر إنشاء الملف في التنزيلات");
+                output = getContentResolver().openOutputStream(savedUri, "w");
+                if (output == null) throw new IOException("تعذر فتح ملف التنزيل");
+            } else {
+                File base = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (base == null) base = getFilesDir();
+                File dir = new File(base, "TikTokMonitor");
+                if (!dir.exists() && !dir.mkdirs()) throw new IOException("تعذر إنشاء مجلد التنزيلات");
+                fallbackFile = new File(dir, filename);
+                output = new FileOutputStream(fallbackFile);
+            }
+
+            try (InputStream input = connection.getInputStream(); OutputStream out = output) {
+                byte[] buffer = new byte[16384];
+                int count;
+                while ((count = input.read(buffer)) != -1) out.write(buffer, 0, count);
+                out.flush();
+            }
+
+            if (savedUri != null) {
+                ContentValues ready = new ContentValues();
+                ready.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                getContentResolver().update(savedUri, ready, null, null);
+            }
+            final String location = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ? "التنزيلات/TikTokMonitor/" + filename
+                : (fallbackFile == null ? filename : fallbackFile.getAbsolutePath());
+            runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                "تم حفظ الملف: " + location, Toast.LENGTH_LONG).show());
+        } catch (Exception e) {
+            if (savedUri != null) {
+                try { getContentResolver().delete(savedUri, null, null); } catch (Exception ignored) {}
+            }
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            final String shown = message.length() > 180 ? message.substring(0, 180) : message;
+            runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+                .setTitle("تعذر تنزيل الأرشيف")
+                .setMessage(shown)
+                .setPositiveButton("موافق", null)
+                .show());
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
 
     private void startPythonServer() {
