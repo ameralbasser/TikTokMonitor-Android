@@ -48,20 +48,20 @@ jobs:
           set -euo pipefail
           mkdir -p app/src/main/assets/ffmpeg
           curl -fL --retry 3 --retry-delay 2 \
-            'https://github.com/rhythmcache/ffmpeg-android/releases/download/build-264/ffmpeg-8.0-ee2eb6c-Dynamic-android-arm64-v8a.zip' \
-            -o /tmp/ffmpeg-android.zip
+            'https://github.com/rhythmcache/ffmpeg-android/releases/download/build-264/termux-ffmpeg-8.0-git--ee2eb6c-arm64-v8a.deb' \
+            -o /tmp/ffmpeg-android.deb
           mkdir -p /tmp/ffmpeg-android
-          echo "FFmpeg archive entries:"
-          unzip -l /tmp/ffmpeg-android.zip | head -n 100
-          unzip -q /tmp/ffmpeg-android.zip -d /tmp/ffmpeg-android
-          FFMPEG_PATH="$(find -L /tmp/ffmpeg-android -type f -size +1M -exec sh -c 'file "$1" | grep -q "ELF 64-bit.*executable.*ARM aarch64" && printf "%s\\n" "$1"' _ '{}' \; | head -n 1)"
+          dpkg-deb -x /tmp/ffmpeg-android.deb /tmp/ffmpeg-android
+          echo "Extracted FFmpeg package files:"
+          find /tmp/ffmpeg-android -type f | grep -E '/(ffmpeg|lib[^/]+\\.so(\\.[0-9.]+)?)$' | head -n 100 || true
+          FFMPEG_PATH="$(find /tmp/ffmpeg-android -type f -name ffmpeg | head -n 1)"
           if [ -z "$FFMPEG_PATH" ]; then
-            echo "No ARM64 FFmpeg executable found; listing large ELF files:"
-            find -L /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \;
+            echo "FFmpeg executable missing from downloaded Android package"
+            find /tmp/ffmpeg-android -type f -size +5M -exec file '{}' \\;
             exit 1
           fi
           cp "$FFMPEG_PATH" app/src/main/assets/ffmpeg/ffmpeg
-          find -L /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp -L '{}' app/src/main/assets/ffmpeg/ \;
+          find /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp '{}' app/src/main/assets/ffmpeg/ \;
           test -s app/src/main/assets/ffmpeg/ffmpeg
           echo "Bundled FFmpeg:"
           file app/src/main/assets/ffmpeg/ffmpeg
