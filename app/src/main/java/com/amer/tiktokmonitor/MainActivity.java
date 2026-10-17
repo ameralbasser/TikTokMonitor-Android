@@ -12,10 +12,14 @@ import android.widget.TextView;
 import com.chaquo.python.PyException;
 import com.chaquo.python.Python;
 import com.chaquo.python.android.AndroidPlatform;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class MainActivity extends Activity {
+    private static final String DASHBOARD_URL = "http://127.0.0.1:8765";
     private WebView webView;
     private TextView status;
+    private volatile String startupError;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -29,19 +33,25 @@ public class MainActivity extends Activity {
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
         webView.setWebChromeClient(new WebChromeClient());
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                status.setVisibility(View.GONE);
+                webView.setVisibility(View.VISIBLE);
+            }
+        });
         root.addView(webView, new FrameLayout.LayoutParams(-1, -1));
         status = new TextView(this);
         status.setTextColor(Color.WHITE);
         status.setTextSize(16);
-        status.setText("جاري تشغيل مراقب TikTok LIVE...");
+        status.setPadding(32, 32, 32, 32);
+        status.setText("جاري تشغيل محرك المراقبة المدمج...");
         status.setGravity(android.view.Gravity.CENTER);
         status.setBackgroundColor(Color.rgb(11, 13, 18));
         root.addView(status, new FrameLayout.LayoutParams(-1, -1));
         setContentView(root);
         webView.setVisibility(View.INVISIBLE);
         startPythonServer();
-        webView.postDelayed(this::openDashboard, 1500);
     }
 
     private void startPythonServer() {
@@ -52,33 +62,56 @@ public class MainActivity extends Activity {
                 }
                 Python.getInstance().getModule("dashboard");
             } catch (PyException e) {
-                runOnUiThread(() -> status.setText("تعذر تشغيل المحرك: " + e.getMessage()));
+                startupError = "خطأ Python: " + e.getMessage();
+                runOnUiThread(() -> showStartupError(startupError));
             } catch (Throwable e) {
-                runOnUiThread(() -> status.setText("تعذر تشغيل التطبيق: "
-                    + e.getClass().getSimpleName() + " — " + String.valueOf(e.getMessage())));
+                startupError = e.getClass().getSimpleName() + ": " + String.valueOf(e.getMessage());
+                runOnUiThread(() -> showStartupError("تعذر تشغيل المحرك المدمج: " + startupError));
             }
         }, "TikTokMonitor-Python").start();
-    }
 
-    private void openDashboard() {
-        if (isFinishing()) return;
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request,
-                    android.webkit.WebResourceError error) {
-                if (request.isForMainFrame()) {
-                    status.setText("المراقب لا يزال يبدأ التشغيل. أعد المحاولة بعد لحظات.");
-                    status.setVisibility(View.VISIBLE);
-                    webView.postDelayed(() -> { if (!isFinishing()) webView.reload(); }, 2000);
+        new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 30000;
+            while (System.currentTimeMillis() < deadline && !isFinishing()) {
+                if (startupError != null) return;
+                HttpURLConnection connection = null;
+                try {
+                    connection = (HttpURLConnection) new URL(DASHBOARD_URL).openConnection();
+                    connection.setConnectTimeout(800);
+                    connection.setReadTimeout(800);
+                    connection.setRequestMethod("GET");
+                    int code = connection.getResponseCode();
+                    if (code >= 200 && code < 500) {
+                        runOnUiThread(() -> {
+                            if (!isFinishing() && startupError == null) {
+                                webView.loadUrl(DASHBOARD_URL);
+                            }
+                        });
+                        return;
+                    }
+                } catch (Exception ignored) {
+                    // Keep waiting while the embedded Python server starts.
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+                try { Thread.sleep(500); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
                 }
             }
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                status.setVisibility(View.GONE);
-                webView.setVisibility(View.VISIBLE);
-            }
-        });
-        webView.loadUrl("http://127.0.0.1:8080");
+            runOnUiThread(() -> {
+                if (!isFinishing() && startupError == null) {
+                    showStartupError("لم يبدأ محرك التطبيق خلال 30 ثانية. أغلق التطبيق وافتحه مجددًا؛ إذا تكرر الخطأ فهذه النسخة تحتاج إصلاحًا إضافيًا.");
+                }
+            });
+        }, "TikTokMonitor-StartupCheck").start();
+    }
+
+    private void showStartupError(String message) {
+        if (isFinishing()) return;
+        status.setText(message);
+        status.setVisibility(View.VISIBLE);
+        webView.setVisibility(View.INVISIBLE);
     }
 
     @Override
