@@ -9,61 +9,6 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, unquote
 
-# Android compatibility shim for TikTokLiveProto's generated Pydantic fields.
-# Some Android-bundled Pydantic versions reject generated fields that combine
-# Annotated[Type, pydantic.Field(...)] with betterproto2.field(...). The protobuf
-# wire type already enforces the field type, so strip only that redundant metadata
-# while loading TikTokLiveProto modules. Termux's normal runtime is left unchanged.
-import importlib.abc
-import importlib.machinery
-import re
-import sys
-
-
-class _TikTokProtoCompatLoader(importlib.abc.Loader):
-    def __init__(self, wrapped):
-        self._wrapped = wrapped
-
-    def create_module(self, spec):
-        create = getattr(self._wrapped, "create_module", None)
-        return create(spec) if create else None
-
-    def exec_module(self, module):
-        source = self._wrapped.get_source(module.__name__)
-        if source is None:
-            self._wrapped.exec_module(module)
-            return
-        source = re.sub(
-            r"typing\.Annotated\[([^,\[\]]+),\s*pydantic\.(?:Field|AfterValidator|BeforeValidator|PlainSerializer|WrapValidator)\([^)]*\)\]",
-            r"\1",
-            source,
-        )
-        filename = self._wrapped.get_filename(module.__name__)
-        exec(compile(source, filename, "exec"), module.__dict__)
-        module.__loader__ = self
-
-    def get_filename(self, fullname):
-        return self._wrapped.get_filename(fullname)
-
-    def get_source(self, fullname):
-        return self._wrapped.get_source(fullname)
-
-
-class _TikTokProtoCompatFinder(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname != "TikTokLiveProto" and not fullname.startswith("TikTokLiveProto."):
-            return None
-        spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        if spec and spec.loader and hasattr(spec.loader, "get_source") and hasattr(spec.loader, "exec_module"):
-            spec.loader = _TikTokProtoCompatLoader(spec.loader)
-            return spec
-        return None
-
-
-if not any(isinstance(finder, _TikTokProtoCompatFinder) for finder in sys.meta_path):
-    sys.meta_path.insert(0, _TikTokProtoCompatFinder())
-
-
 from TikTokLive import TikTokLiveClient
 from TikTokLive.client.web.routes.fetch_video_data import (
     VideoFetchQuality,
