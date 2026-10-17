@@ -61,7 +61,7 @@ jobs:
             exit 1
           fi
           cp "$FFMPEG_PATH" app/src/main/assets/ffmpeg/ffmpeg
-          find /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp '{}' app/src/main/assets/ffmpeg/ \;
+          find -L /tmp/ffmpeg-android -type f -name 'lib*.so*' -exec cp -L '{}' app/src/main/assets/ffmpeg/ \;
           test -s app/src/main/assets/ffmpeg/ffmpeg
           echo "Bundled FFmpeg:"
           file app/src/main/assets/ffmpeg/ffmpeg
