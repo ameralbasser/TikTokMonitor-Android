@@ -34,7 +34,7 @@ class _TikTokProtoCompatLoader(importlib.abc.Loader):
             self._wrapped.exec_module(module)
             return
         source = re.sub(
-            r"typing\.Annotated\[([^,\[\]]+),\s*pydantic\.Field\([^)]*\)\]",
+            r"typing\.Annotated\[([^,\[\]]+),\s*pydantic\.(?:Field|AfterValidator|BeforeValidator|PlainSerializer|WrapValidator)\([^)]*\)\]",
             r"\1",
             source,
         )
